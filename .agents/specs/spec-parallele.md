@@ -18,16 +18,16 @@
 
 | ID | Statut | Type | Ancre officielle | Titre |
 |---|---|---|---|---|
-| SP-<DOM>-01 | en vigueur (2026-10-11) | AMENDE | <Partie.Section> (p. X) | <titre> |
+| — | — | — | — | (aucune entrée) |
 
 ## Domaines (codes)
 
-`<DOM1>` (<description>) · `<DOM2>` (<description>).
+_Aucun domaine défini pour l'instant — à établir avec le premier `SP-*`._
 Liste fermée : extension sur validation utilisateur.
 
 ## Statuts & types
 
-- **Statuts** : `en vigueur (validé 2026-10-11)` · `hypothèse (retenue provisoire, en attente de confirmation)` · `caduc (→ SP-…)`
+- **Statuts** : `en vigueur (validé YYYY-MM-DD)` · `hypothèse (retenue provisoire, en attente de confirmation)` · `caduc (→ SP-…)`
 - **Types** : `AMENDE` (remplace la page) · `PRECISE` (complète une règle) · `ETEND` (cas non couvert)
 
 ## Contrôle d'intégrité
@@ -47,7 +47,7 @@ Liste fermée : extension sur validation utilisateur.
 >
 > ### SP-<DOM>-01 : <titre>
 >
-> > **Statut** : en vigueur (validé 2026-10-11) · **Type** : AMENDE / PRECISE / ETEND
+> > **Statut** : en vigueur (validé YYYY-MM-DD) · **Type** : AMENDE / PRECISE / ETEND
 > > **Ancre officielle** : <Partie.Section> (p. X)
 > > **Source** : feature `<chemin DONE>`
 > > **Remplace** : SP-… *(si applicable)*
