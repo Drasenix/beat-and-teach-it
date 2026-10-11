@@ -30,3 +30,6 @@ npm-debug.log.*
 
 TODOLIST.txt
 daw_layout_wireframe.html
+# workflow-kit (kit agnostique imbrique + fichiers generes, non commites)
+workflow-kit/
+.opencode
