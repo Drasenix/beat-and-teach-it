@@ -22,6 +22,5 @@
 ## Exécution
 
 - **Ciblé** (subagents `@test` / `@dev`) : `npx jest --runInBand <fichier|pattern>`.
-- **Global** (Build uniquement, fin de workflow) : `npm test`.
-- **Vérification systématique** : après toute création/modification de test ou de code métier, lancer `npm test`.
+- **Global** (Build uniquement, fin de workflow, une seule fois) : `npm test`.
 - Détails et format de rapport : `.agents/skills/tests/SKILL.md`.

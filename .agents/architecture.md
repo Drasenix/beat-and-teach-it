@@ -76,7 +76,7 @@ MemoryRouter
 
 ## Base de données
 
-- SQLite (`better-sqlite3`), fichier `userData/database.db` (WAL mode, foreign keys ON).
+- SQLite (`better-sqlite3`), fichier `database.db` dans le dossier `userData` d'Electron (WAL mode, foreign keys ON).
 - Tables : `instruments`, `patterns` (voir `.agents/specs/spec.txt` §13).
 - DTO `sentences` et `highlights` stockés en `TEXT` (JSON) — parser/stringifier systématiquement.
 

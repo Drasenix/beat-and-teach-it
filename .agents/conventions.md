@@ -30,6 +30,14 @@
 - **État global réservé aux données partagées** (listes patterns/instruments, session audio). Tout le reste en état local (`useState` dans le composant).
 - **⚠️ Feature-sliced, pas hexagonal** : les `engine/` contiennent la logique métier pure, les `facade/` servent d'API publique, mais UI et métier cohabitent dans le même slice. Pas d'interface entre facade et service — l'appel IPC est direct. Pas de ports, pas d'inversion de dépendance formelle.
 
+### Responsabilités et abstractions
+
+- **Une raison de changer par fichier** : un engine porte les règles métier d'un domaine ; un service, un accès (canal IPC, données) ; un adapter, un mapping DTO ↔ modèle. Une règle d'un autre domaine va dans ce domaine, pas dans un engine ou un service existant.
+- **Où vit une règle** : règle métier → engine ; calcul pur sans règle métier → utils ; conversion DTO ↔ modèle → adapter ; accès IPC ou données → service.
+- **KISS** : pas d'interface, de classe abstraite, de paramètre ou de garde qu'aucun besoin présent ne justifie. En test, `jest.mock()` remplace le module : pas d'interface pour la seule testabilité.
+- **Sous-classe** : elle accepte tout ce que le parent accepte et rend ce qu'il promet.
+- Critères communs (code mort, duplication, surenchère) : `workflow-kit/core/qualite-code.md`.
+
 ## Conventions par domaine
 
 ### Pattern

@@ -7,12 +7,21 @@
     "build": {
       "permission": {
         "task": {
-          "specs": "allow",
           "doc": "allow",
-          "architect": "allow",
           "test": "allow",
           "dev": "allow",
-          "review": "allow"
+          "review": "allow",
+          "explorateur": "allow",
+          "challenger": "allow"
+        }
+      }
+    },
+    "raffineur": {
+      "permission": {
+        "task": {
+          "doc": "allow",
+          "explorateur": "allow",
+          "challenger": "allow"
         }
       }
     }
