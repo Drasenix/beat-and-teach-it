@@ -10,6 +10,7 @@
 ## Utilitaires généraux (renderer)
 
 ### util.ts
+
 - **Fichier** : `src/renderer/utils/util.ts`
 - **Type** : Utils (fonctions pures)
 - **Méthodes** :
@@ -20,6 +21,7 @@
 - **Utilisé par** : facades renderer, composants (affichage d'erreur IPC), génération de slugs d'instruments.
 
 ### normalize-spaces.ts
+
 - **Fichier** : `src/renderer/utils/normalize-spaces.ts`
 - **Type** : Utils (fonction pure)
 - **Méthodes** :
@@ -31,13 +33,15 @@
 ## Parsing de phrases (notation symbolique)
 
 ### token-parser.ts
+
 - **Fichier** : `src/renderer/utils/token-parser.ts`
 - **Type** : Utils (fonctions pures) + type `ParsedToken = { symbol: string; frequency?: number }`
 - **Méthodes** :
-  - `parseToken(raw: string): ParsedToken` : sépare `symbole@fréquence`. Le suffixe est accepté en **Hz numérique** (`P@220`) ou en **nom de note** (`P@A3`) ; sinon `frequency` est absent.
+  - `parseToken(raw: string): ParsedToken` : sépare `symbole@fréquence`. Le suffixe est accepté en **Hz numérique** (`P@220`) ou en **nom de note** (`P@A3`) ; sinon `frequency` est absent. **Pièges** : un `@` en tête n'est pas un suffixe (`@440` reste un symbole) ; seul le premier `@` sépare, le reste doit être un nombre ou une note (`A@B@440` → symbole `A`, sans fréquence).
 - **Utilisé par** : `sentence-tokenizer`, `extractSymbols`.
 
 ### sentence-tokenizer.ts
+
 - **Fichier** : `src/renderer/utils/sentence-tokenizer.ts`
 - **Type** : Utils (fonctions pures) + interface `TokenMatch = { group?: string; symbol?: string; fullMatch: string }`
 - **Méthodes** :
@@ -48,9 +52,47 @@
 
 ---
 
+## Pattern (grille et édition)
+
+### pattern-parser.ts
+
+- **Fichier** : `src/renderer/features/pattern/utils/pattern-parser.ts`
+- **Type** : Utils (fonctions pures)
+- **Méthodes** :
+  - `createStep(raw, validSymbols, id): PatternStep` : parse un token (`@fréquence` compris) et pose `valid` selon le catalogue.
+  - `createGroup(raw, symbols, startId): PatternStep` : éclate le contenu d'un groupe en sous-steps ; le `symbol` affiché perd les `@fréquence`.
+  - `parseSteps(sentence, validSymbols): PatternStep[]` : tokenise puis crée steps et groupes.
+  - `flatTokenCount(sentence): number` : nombre de tokens **aplatis** (retire les parenthèses) — un groupe de N tokens compte N.
+  - `buildFlatTokenIndices(track): number[]` : pour chaque step, l'index aplati de son **premier** token ; un groupe avance de `steps.length`.
+  - `countSentenceSteps(sentence): number` : nombre de steps **visuels** (un groupe = 1).
+- **Utilisé par** : grille (`PatternSteps`), `usePattern`, édition de fréquence.
+- **Pièges** : `countSentenceSteps` (visuel) et `flatTokenCount` (aplati) ne répondent pas à la même question ; utiliser le bon index pour les highlights, le mute et `updateTokenFrequency`.
+
+### pattern-mute.ts
+
+- **Fichier** : `src/renderer/features/pattern/utils/pattern-mute.ts`
+- **Type** : Utils (fonctions pures)
+- **Méthodes** :
+  - `transformSentencesWithMute(sentences, mutedSteps): string[]` : remplace les tokens mutés par `.` pour la lecture, **sans** modifier les phrases stockées.
+  - `createMuteKey(sentenceIndex, tokenIndex): string` / `isStepMuted(…)` / `toggleMute(…)` : clé `"sentenceIndex-tokenIndex"` sur l'index **aplati**, Set immuable.
+- **Utilisé par** : `usePatternSession` (`sentencesForPlayback`).
+- **Piège** : le mute vit en session et n'est pas persisté ; la clé d'un groupe suit les tokens aplatis, pas le step visuel.
+
+### pattern-validator.ts
+
+- **Fichier** : `src/renderer/features/pattern/utils/pattern-validator.ts`
+- **Type** : Validator (fonctions pures)
+- **Méthodes** :
+  - `validatePattern(fields): string[]` (export par défaut) : nom requis, au moins une phrase, chaque phrase non vide.
+  - `areAllSymbolsValid(sentences, validSymbols): boolean` : ignore les `@fréquence` via `parseToken`, tolère `.` et les groupes.
+- **Utilisé par** : formulaire pattern, lecture.
+
+---
+
 ## Fréquences / notes
 
 ### note-name-to-frequency.ts
+
 - **Fichier** : `src/renderer/utils/note-name-to-frequency.ts`
 - **Type** : Utils (fonction pure, export par défaut)
 - **Méthodes** :
@@ -58,6 +100,7 @@
 - **Utilisé par** : `token-parser`.
 
 ### frequency-to-note.ts
+
 - **Fichier** : `src/renderer/utils/frequency-to-note.ts`
 - **Type** : Utils (fonction pure, export par défaut)
 - **Méthodes** :
@@ -65,6 +108,7 @@
 - **Utilisé par** : `update-token-frequency`.
 
 ### update-token-frequency.ts
+
 - **Fichier** : `src/renderer/utils/update-token-frequency.ts`
 - **Type** : Utils (fonction pure, export par défaut)
 - **Méthodes** :
@@ -72,6 +116,7 @@
 - **Utilisé par** : édition de fréquence par token.
 
 ### detect-pitch.ts
+
 - **Fichier** : `src/renderer/utils/detect-pitch.ts`
 - **Type** : Utils (fonction pure, export par défaut)
 - **Méthodes** :
@@ -80,9 +125,24 @@
 
 ---
 
+## Sequence (pattern → notes audio)
+
+### sequence-service.ts
+
+- **Fichier** : `src/renderer/features/sequence/service/sequence-service.ts`
+- **Type** : Service (fonctions pures async)
+- **Méthodes** :
+  - `prepareFilePaths(sentence): Promise<InstrumentFilePath[]>` : symboles uniques (parenthèses retirées) → chemins audio ; lève si un symbole est inconnu.
+  - `preparePattern(sentence): Promise<SequenceNotes[]>` : tokenise et produit les notes ; un groupe devient un tableau de notes.
+- **Utilisé par** : `AudioContext` / `audio-facade`.
+- **Pièges** : `playbackRate = fréquence cible / reference_frequency`, clampé `[0.25, 4]` ; référence absente ou ≤ 0 → rate `1` et offset `0` ; `semitoneOffset = round(12 * log2(rate))`.
+
+---
+
 ## Audio (moteur Tone.js)
 
 ### AudioEngine (singleton)
+
 - **Fichier** : `src/renderer/features/audio/engine/audio-engine.ts`
 - **Type** : Engine (singleton)
 - **Méthodes** :
@@ -103,6 +163,7 @@
 ## Instruments
 
 ### InstrumentEngine (singleton)
+
 - **Fichier** : `src/renderer/features/instruments/engine/instrument-engine.ts`
 - **Type** : Engine (singleton)
 - **Méthodes** :
@@ -114,6 +175,59 @@
   - `getInstrumentNameFromSymbol(symbol: string): InstrumentName` : **lève une erreur** si le symbole est inconnu.
   - `getInstrumentReferenceFrequency(symbol: string): number | null` : **lève une erreur** si le symbole est inconnu.
 - **Utilisé par** : feature instruments (résolution symbole → nom/chemin).
+
+### instrument-validator.ts
+
+- **Fichier** : `src/renderer/features/instruments/utils/instrument-validator.ts`
+- **Type** : Validator (fonction pure, export par défaut)
+- **Méthodes** :
+  - `validateInstrument(instrument): string[]` : symbole requis, **`@` interdit dans le symbole**, nom requis, fichier audio requis.
+- **Utilisé par** : formulaire instrument.
+
+---
+
+## Thème
+
+### themes.ts
+
+- **Fichier** : `src/renderer/features/theme/utils/themes.ts`
+- **Type** : Utils (registre pur)
+- **Méthodes** :
+  - `themes` : liste en lecture seule (Proxy) des 3 thèmes (`blue`, `green`, `pink`) avec `label` et `accentHex`.
+  - `getThemeById(id: unknown): ThemeEntry | null` : `null` si inconnu, casse sensible.
+  - `isValidThemeId(id: unknown): boolean` / `DEFAULT_THEME` (bleu).
+- **Utilisé par** : `ThemeContext`, `ThemeSwitcher`.
+
+### theme-storage.ts
+
+- **Fichier** : `src/renderer/features/theme/utils/theme-storage.ts`
+- **Type** : Utils (persistance localStorage)
+- **Méthodes** :
+  - `getStoredTheme(): ThemeId | null` / `saveTheme(theme: string): void` / `resolveInitialTheme(): ThemeId` (défaut `blue`).
+- **Utilisé par** : `ThemeContext`.
+- **Pièges** : clé `beat-and-teach:theme` ; toute lecture/écriture en erreur est avalée (retour `null` / no-op) ; `saveTheme` ignore un id invalide ; le script anti-FOUC de `index.ejs` ne pose que `green`/`pink`.
+
+---
+
+## Enregistreur (recorder)
+
+### wav-encoder.ts
+
+- **Fichier** : `src/renderer/features/recorder/utils/wav-encoder.ts`
+- **Type** : Utils (fonction pure, export par défaut)
+- **Méthodes** :
+  - `encodeWav(samples: Float32Array, sampleRate: number): ArrayBuffer` : PCM 16 bits mono, en-tête RIFF/WAVE ; clippe les échantillons à `[-1, 1]`.
+- **Utilisé par** : `useRecorder` / sauvegarde d'un enregistrement.
+
+### waveform-renderer.ts
+
+- **Fichier** : `src/renderer/features/recorder/utils/waveform-renderer.ts`
+- **Type** : Utils (rendu canvas)
+- **Méthodes** :
+  - `renderWaveform(options): void` : dessine la forme d'onde avec `trimStart`/`trimEnd`, position de lecture et couleurs explicites.
+  - `trimSamples(samples, trimStart, trimEnd): Float32Array` : extrait la portion conservée.
+- **Utilisé par** : écran Recorder.
+- **Piège** : le canvas ne consomme pas les variables CSS du thème ; les couleurs sont des paramètres (défauts hex dans le fichier).
 
 ---
 

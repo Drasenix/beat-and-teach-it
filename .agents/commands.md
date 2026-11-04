@@ -41,3 +41,7 @@ npm run typecheck      # tsc -p tsconfig.renderer.json && tsc -p tsconfig.main.j
 ```bash
 # SQLite (better-sqlite3) — migrations gérées dans src/main/db/
 ```
+
+- Base : `database.db` dans le dossier `userData` (WAL mode ; fichiers `-wal`/`-shm` associés), créée et migrée au démarrage.
+- Repartir du seed : supprimer `database.db`, `database.db-wal` et `database.db-shm` ; les migrations re-seedent 12 patterns et 20 instruments.
+- **Ne jamais modifier une migration existante** : en créer une nouvelle.

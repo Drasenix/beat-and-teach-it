@@ -12,7 +12,8 @@
 
 - **Pas d'index de tableau comme `key`** : utiliser un ID stable et unique.
 - État global réservé aux données partagées (listes patterns/instruments, session audio) ; le reste en `useState` local.
-- Providers dans l'ordre : `AudioProvider > PatternsProvider > InstrumentsProvider > GuideModalProvider`.
+- Providers dans l'ordre : `ThemeProvider > AudioProvider > PatternsProvider > InstrumentsProvider > GuideModalProvider > RouterProvider`.
+- Le thème est appliqué par `ThemeProvider` (`data-theme` sur `<html>`) : ne jamais manipuler `data-theme` depuis un composant ; passer par `useThemeContext()`.
 - Pas de logique métier dans les composants : déléguer aux facades / hooks.
 
 ## Hooks

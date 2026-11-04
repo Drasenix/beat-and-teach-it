@@ -22,7 +22,7 @@ Read(file_path=".agents/specs/spec.txt", offset=<ligne>, limit=<N>)
 - **§4 Parcours utilisateur** (Studio, Instruments, Patterns, Bibliothèque, Guide).
 - **§5 Raccourcis clavier**.
 - **§6 Flux de données critiques** (composition, résolution symboles, import/export, chargement audio).
-- **§7 Palette de couleurs et thème**.
+- **§7 Palette de couleurs et thème** (amendé par `SP-THEME-01`).
 - **§8 Animations et retours visuels**.
 - **§9 Autocomplétion**.
 - **§10 Données initiales (seed)** : 12 patterns, 20 instruments.
@@ -31,24 +31,31 @@ Read(file_path=".agents/specs/spec.txt", offset=<ligne>, limit=<N>)
 - **§13 Schémas SQL**.
 - **§14 Tests**.
 
+> **Sections amendées** : §2.1, §2.3, §6, §7 et §13 sont précisées par des `SP-*`. Lire l'index du spec parallèle avant ces sections.
+
 ## Quick lookup : par concept métier
 
-| Concept | Sections à lire |
-|---|---|
-| Instrument | §2.1, §3 (RG1, RG3, RG7), §13 |
-| Pattern / Phrase | §2.2, §2.3, §3 (RG2, RG4, RG5) |
-| Groupe `(…)` | §2.4, §6.1 |
-| Mute | §3 (RG8) |
-| Highlights | §2.2, §3 (RG9), §7 |
-| Import / export `.beatpack` | §4.4, §6.3, §3 (RG11, RG12) |
-| BPM | §3 (RG13), §5 |
-| Audio / séquenceur | §6.1, §6.4 |
+| Concept                        | Sections à lire                               |
+| ------------------------------ | --------------------------------------------- |
+| Instrument                     | §2.1, §3 (RG1, RG3, RG7), §13 + `SP-NOTE-02`  |
+| Pattern / Phrase               | §2.2, §2.3, §3 (RG2, RG4, RG5) + `SP-NOTE-01` |
+| Groupe `(…)`                   | §2.4, §6.1                                    |
+| Mute                           | §3 (RG8)                                      |
+| Highlights                     | §2.2, §3 (RG9), §7                            |
+| Thème / palette                | §7 + `SP-THEME-01`                            |
+| Notes / hauteur (`@fréquence`) | §2.1, §2.3, §6.1 + `SP-NOTE-01`, `SP-NOTE-02` |
+| Fréquence de référence         | §2.1, §13 + `SP-NOTE-02`                      |
+| Import / export `.beatpack`    | §4.4, §6.3, §3 (RG11, RG12) + `SP-NOTE-02`    |
+| BPM                            | §3 (RG13), §5                                 |
+| Audio / séquenceur             | §6.1, §6.4                                    |
 
 ## Quick lookup : spec parallèle (`SP-*`)
 
-| Concept | Entrées |
-|---|---|
-| — | (voir `.agents/specs/spec-parallele.md`) |
+| Concept             | Entrées       |
+| ------------------- | ------------- |
+| Thèmes              | `SP-THEME-01` |
+| Notation de hauteur | `SP-NOTE-01`  |
+| Lecture pitchée     | `SP-NOTE-02`  |
 
 ## Workflow conseillé pour agent IA
 

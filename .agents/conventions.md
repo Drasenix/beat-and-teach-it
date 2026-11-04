@@ -46,6 +46,8 @@
 - `usePatternSession` = wrapper avec gestion du mute (`Set<string>` de clés `"sentenceIndex-tokenIndex"`).
 - `usePatternForm` = gestion de formulaire avec synchronisation des highlights.
 - Parser = fonctions pures dans `pattern-parser.ts`.
+- Hauteur : un token peut porter `@fréquence` (Hz ou nom de note). Le texte de la phrase est la source unique ; aucun tableau `frequencies` séparé.
+- Index : highlights, mute et édition de fréquence utilisent l'index **aplati** (un groupe de N tokens compte N) ; `countSentenceSteps` ne sert qu'à l'affichage visuel.
 - Normalisation automatique des phrases non-racines sur la longueur de la première.
 
 ### Instruments
@@ -54,6 +56,8 @@
 - L'instrument `symbol: "."` est toujours filtré de l'UI.
 - Slug auto-généré via `toSnakeCase()` — valide `[a-z0-9-]`.
 - Les chemins audio relatifs sont résolus par rapport à `assets/audio/` ou `resources/assets/audio/`.
+- `referenceFrequency` (Hz, nullable) = hauteur naturelle du sample ; détectée par autocorrélation (`detectPitch`) ou saisie manuellement, stockée dans `instruments.reference_frequency`.
+- `@` est interdit dans le `symbol` (ambiguïté avec le suffixe de fréquence).
 
 ### Audio
 
@@ -62,19 +66,34 @@
 - Groupes `(…)` → `SequenceNote[]` (tableau) — Tone.js dispatche chaque élément à la même position temporelle.
 - Step callback = `Tone.Loop` à `'8n'` → `activeStep` pour l'UI.
 - BPM clampé 1-300 (UI slider 40-240).
+- Pitch : `SequenceNote` porte `playbackRate` et `semitoneOffset` ; `playbackRate = cible / reference_frequency`, clampé `[0.25, 4]`, et la référence absente ou ≤ 0 donne `1`. Pas de time-stretch en V1.
 
 ### Sequence
 
-- `preparePattern(sentence)` → `SequenceNotes[]` = `(string | null | string[])[]`.
+- `preparePattern(sentence)` → `SequenceNotes[]` = `(SequenceNote | SequenceNote[])[]` (un groupe = tableau de notes ; `null` = silence).
 - `prepareFilePaths(sentence)` → `InstrumentFilePath[]` (symboles uniques dédupliqués).
+- `@fréquence` → `playbackRate = cible / reference_frequency`, clampé `[0.25, 4]`, `semitoneOffset = round(12 * log2(rate))`.
 - Regex de parsing : `/\(([^)]*)\)|(\S+)/g`.
 
 ### Library
 
 - `.beatpack` = ZIP avec `manifest.json` + `audio/*`.
-- Export : archiver (store level), Import : adm-zip.
+- Export : archiver (store level), manifest `version: 2` avec `referenceFrequency` par instrument. Import : adm-zip, versions `1` et `2` acceptées.
 - `ConflictAction` : `'overwrite' | 'skip' | 'rename'`.
 - Fichiers audio importés copiés dans `userData/imported-audio/`.
+
+### Thème
+
+- Slice `features/theme/` : registre pur `themes.ts`, persistance `theme-storage.ts`, `ThemeContext` qui applique `data-theme` sur `<html>`.
+- 3 thèmes : `blue` (défaut), `green`, `pink`. Seuls les accents changent ; gris, highlights, rouge d'erreur et backdrop restent fixes.
+- Persistance `localStorage` (`beat-and-teach:theme`) ; valeur absente/invalide ou erreur de stockage → `blue`, sans erreur.
+- Pas de couleur hex en dur dans le JSX : tokens Tailwind adossés à `--bt-*` (voir `.agents/ui-rules.md`).
+
+### Recorder
+
+- Slice `features/recorder/` : `useRecorder` (`getUserMedia` + `ScriptProcessorNode`), `wav-encoder.ts` (PCM 16 bits mono), `waveform-renderer.ts` (canvas).
+- Sauvegarde via IPC `open-audio-save-dialog` puis `save-recorded-audio`.
+- Le canvas de waveform ne consomme pas les variables CSS du thème : ses couleurs sont des paramètres explicites.
 
 ## Tests
 

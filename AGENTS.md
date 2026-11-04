@@ -44,6 +44,7 @@ En cas d'ambiguïté, **demander à l'utilisateur** plutôt que supposer.
 ## Règles dures
 
 ### Ne jamais
+
 - Modifier une migration existante. Créer une nouvelle migration.
 - Mettre de logique métier dans un composant / contrôleur.
 - Toucher aux fichiers de config sensibles existants sans accord explicite.
@@ -51,6 +52,7 @@ En cas d'ambiguïté, **demander à l'utilisateur** plutôt que supposer.
 - Inventer des nuances métier.
 
 ### Toujours
+
 - Lancer les tests avant de considérer un changement fini.
 - Formater le code après modification.
 - Utiliser le fallback documenté si l'outil principal n'est pas accessible localement.
@@ -72,13 +74,20 @@ Quand l'utilisateur demande un « point » destiné à un interlocuteur non tech
 
 ## Aide-mémoire
 
-| Je veux… | Lire |
-|---|---|
-| Versions / deps | `.agents/stack.md` |
-| Arborescence et IPC | `.agents/architecture.md` |
-| Organiser du nouveau code | `.agents/conventions.md` |
-| Retrouver une commande | `.agents/commands.md` |
-| Comprendre une entité métier | `.agents/domain-glossary.md` |
-| Comprendre un flux / statut / règle | `.agents/specs/spec.txt` (+ index `.agents/specs/README.md`) |
-| Vérifier une règle `SP-*` | `.agents/specs/spec-parallele.md` |
-| Comprendre le workflow de dev | `workflow-kit/core/index.md` + `workflow-kit/core/agent-workflow.md` |
+| Je veux…                            | Lire                                                                 |
+| ----------------------------------- | -------------------------------------------------------------------- |
+| Versions / deps                     | `.agents/stack.md`                                                   |
+| Arborescence et IPC                 | `.agents/architecture.md`                                            |
+| Organiser du nouveau code           | `.agents/conventions.md`                                             |
+| Couleurs, thèmes, styles            | `.agents/ui-rules.md`                                                |
+| Composants, hooks, accessibilité    | `.agents/component-rules.md`                                         |
+| Réutiliser une méthode existante    | `.agents/reference-utilitaires.md`                                   |
+| Partir d'un template de code        | `.agents/templates-index.md`                                         |
+| Retrouver une commande              | `.agents/commands.md`                                                |
+| Écrire / lancer des tests           | `.agents/test-rules.md` + `.agents/skills/tests/SKILL.md`            |
+| Faire une recette manuelle          | `.agents/skills/recette/SKILL.md`                                    |
+| Comprendre une entité métier        | `.agents/domain-glossary.md`                                         |
+| Comprendre un flux / statut / règle | `.agents/specs/spec.txt` (+ index `.agents/specs/README.md`)         |
+| Vérifier une règle `SP-*`           | `.agents/specs/spec-parallele.md`                                    |
+| Voir le backlog produit             | `.agents/todo.md`                                                    |
+| Comprendre le workflow de dev       | `workflow-kit/core/index.md` + `workflow-kit/core/agent-workflow.md` |
