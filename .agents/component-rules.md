@@ -16,6 +16,10 @@
 - Le thème est appliqué par `ThemeProvider` (`data-theme` sur `<html>`) : ne jamais manipuler `data-theme` depuis un composant ; passer par `useThemeContext()`.
 - Pas de logique métier dans les composants : déléguer aux facades / hooks.
 
+## Overlays et tooltips
+
+- Les tooltips de step sont rendus dans `document.body` (`createPortal`, `position: fixed` calculée au `mouseenter`) : ne pas les replier dans le badge, qui hérite du `transform` / `filter` de `step-active-pulse`.
+
 ## Hooks
 
 - Hooks partagés dans `hooks/` (ex. `useResizable`, `useSlider`, `useCaretPosition`).

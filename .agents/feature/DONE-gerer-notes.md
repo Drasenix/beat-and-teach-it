@@ -1,110 +1,144 @@
 # Feature: Gérer les notes (pitch shifting par instrument)
 
-## Problème
+> Clôturé le 2026-06-23 · version de travail : `git show 66eeb90:.agents/feature/DONE-gerer-notes.md`
 
-Un instrument = un fichier audio fixe. Pour les percussions (kick, snare) c'est
-suffisant. Mais pour un son mélodique (ex: un "Hum" fredonné), il faudrait un
-fichier par note, ce qui est ingérable.
+## Résumé métier
 
-## Solution cible
+Un instrument peut porter une **fréquence de référence** : sa hauteur naturelle, détectée par autocorrélation sur son sample ou saisie à la main. Une phrase peut ensuite préciser la hauteur de chaque token avec un suffixe `@` — en hertz (`Hum@440`) ou en nom de note (`Hum@A#4`) — sans créer de fichier audio par note. À la lecture, le sample est rejoué à une vitesse calculée (`playbackRate = cible / référence`, bornée à ±2 octaves) : la hauteur change, la durée du sample aussi (pas de time-stretch en V1). Sur un step, un cran de molette monte ou descend d'un demi-ton (le texte est réécrit en note juste), le double-clic retire la hauteur, et le survol ouvre un tooltip unique qui réunit la bande de 17 notes, les 5 couleurs, le mute et le reset. La fréquence vit dans le texte de la phrase, seule source de vérité : aucune colonne ni aucun état miroir n'est stocké, et `patterns` reste inchangé. L'export `.beatpack` passe en manifest `version: 2` avec `referenceFrequency` ; un manifest v1 reste importable.
 
-Enregistrer un seul sample, et le **moduler à la volée** (pitch shifting via
-`playbackRate`) pour produire différentes notes. Un même échantillon audio joué
-à des hauteurs différentes.
+## Scénarios évolution — nouveau comportement
 
----
+> Comportement reconstruit à la compaction depuis les décisions actées, le flux de données, les cas limites et les corrections (la version de travail n'avait pas de scénarios GWT).
 
-## Flux de pensée & analyses contradictoires
+#### Instrument — fréquence de référence
 
-### Round 1 — Première intuition (analyse #1)
+**Cas nominaux**
 
-L'approche naïve : stocker les fréquences dans un tableau `frequencies: (number
-| null)[][]` séparé, en miroir de `highlights`.
+- Given: un instrument existant sans référence
+  When: on saisit `440` dans le champ fréquence et on sauvegarde
+  Then: `instruments.reference_frequency = 440`, l'instrument devient pitchable
+- Given: un sample d'environ 1 s contenant un son stable
+  When: on clique sur « Détecter »
+  Then: le champ est pré-rempli avec la fréquence détectée (Hz), modifiable avant sauvegarde
 
-- Nouvelle colonne `frequencies TEXT` dans la table `patterns`
-- Nouvel état `useState<(number | null)[][]>()` dans `usePatternSession`
-- Synchronisation `sentences ↔ frequencies` à chaque `changeSentence`
-- Molette : modifier `frequencies[i][j]` directement
-- Notation texte : `Hum@440`, parser → extraire la fréquence → stocker dans le
-  tableau, nettoyer le texte
+**Cas limites**
 
-**Problèmes identifiés :**
-1. Double source de vérité (texte ET tableau) → risque de désynchronisation
-2. Le textarea affiche `Hum@440`, mais `changeSentence` nettoie → le `@440`
-   disparaît visuellement → UX confuse
-3. Migration BDD nécessaire sur `patterns`
-4. Duplication de la logique de synchronisation (déjà complexe pour
-   `highlights`)
+- Given: un sample trop court (< 0,02 s), silencieux ou de confiance < 0,5
+  When: on clique sur « Détecter »
+  Then: aucune fréquence n'est proposée, sans erreur
+- Given: le formulaire de création d'instrument
+  When: on saisit un symbole contenant `@`
+  Then: la validation refuse le symbole (ambiguïté avec le suffixe de fréquence)
 
-### Round 2 — Remise en question (analyse #2)
+#### Saisie — notation `@fréquence`
 
-En explorant `SentenceInput`, découverte clé : le composant est **fully
-controlled** — `value={sentence}` + `onChange={(value) => changeSentence(index,
-value)}`. Aucun état local.
+**Cas nominaux**
 
-**Nouvelle direction : le texte est la source unique de vérité.**
+- Given: une phrase vide
+  When: on saisit `Hum@440 P (Ts@220 K) .`
+  Then: la grille affiche Hum pitché à 440, P sans fréquence, Ts pitché à 220 dans le groupe, et la phrase stockée garde le texte exact (aucun tableau de fréquences)
+- Given: une phrase `Hum@A#4`
+  When: la lecture prépare le pattern
+  Then: la fréquence vaut 466,16 Hz (tempérament égal, A4 = 440), comme pour `Hum@466.16`
 
-- Les `@freq` vivent DANS les `sentences` (ex: `"Hum@440 P (Ts@220 K) ."`)
-- **Aucun** tableau `frequencies` séparé
-- **Aucune** migration BDD pour `patterns`
-- **Aucun** état supplémentaire dans `usePatternSession`
-- La molette modifie le texte directement → `changeSentence` → re-render
-  automatique du textarea ET de la grille
+**Cas limites**
 
-### Comparaison des deux approches
+- Given: `P@0`, `P@abc` ou `P@`
+  When: la grille parse le token
+  Then: P est affiché sans fréquence, le suffixe est ignoré sans erreur et le token reste valide
+- Given: un groupe `(Hum@440 Hum@554)`
+  When: la grille l'affiche
+  Then: chaque sous-token porte sa propre fréquence
 
-```
-Option B (tableaux séparés)              Option D (texte source unique)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Stockage : 2 colonnes JSON               Stockage : 1 colonne (sentences)
-State    : 2 tableaux à synchroniser     State    : 0 tableau supplémentaire
-Molette  : Modifier frequencies[i][j]    Molette  : Modifier la phrase texte
-Migration : OUI (ALTER TABLE patterns)   Migration : NON (patterns inchangés)
-Risque   : Désynchronisation             Risque   : Bug dans updateTokenFrequency
-Complexité globale : ÉLEVÉE             Complexité globale : MOYENNE
-```
+#### Molette et tooltip sur un step
 
-### Corrections apportées par l'analyse #2
+**Cas nominaux**
 
-1. **"Deux pistes, même instrument, même step, playbackRate différents"**
-   → Non-problème. Tone.js crée un `AudioBufferSourceNode` distinct par
-   `player.start(time)`, chacun capture son propre `playbackRate`.
+- Given: un step `Hum@440` d'un instrument à référence 220
+  When: on fait un cran de molette vers le haut
+  Then: le texte devient `Hum@A#4` (466,16 Hz, +1 demi-ton, pas un flottant) et le textarea comme la grille se mettent à jour ensemble
+- Given: un token dans un groupe `(A B C)`
+  When: on tourne la molette sur le 2e sous-step
+  Then: seul B est réécrit (index de token aplati)
+- Given: un token pitché
+  When: on double-clique sur son badge
+  Then: le `@fréquence` est retiré et le step reprend la hauteur naturelle de l'instrument
+- Given: un step dont l'instrument a une référence
+  When: on survole le badge
+  Then: le tooltip affiche la bande de 17 notes (±8 demi-tons autour de la note courante), les 5 couleurs, le mute et le reset (si le token est pitché)
 
-2. **Type `SequenceNotes` cassant**
-   → Acceptable. Le type n'est consommé que par `preparePattern` →
-   `AudioEngine.createSequence`, deux fonctions sous notre contrôle.
+**Cas limites**
 
-3. **Complexité de `updateTokenFrequency`**
-   → Fonction pure isolée d'environ 30 lignes, parfaite pour le TDD.
+- Given: un instrument sans fréquence de référence
+  When: on tourne la molette sur ses steps
+  Then: rien ne change (aucun playbackRate calculable)
+- Given: un instrument sans fréquence de référence
+  When: on survole un de ses steps
+  Then: la bande de notes est masquée, les couleurs et le mute restent disponibles
+- Given: un step affiché dans la grille
+  When: on clique simplement sur le badge
+  Then: le mute ne bascule pas : il ne se commande que par le tooltip
 
-### Décision finale
+#### Lecture pitchée
 
-**Option D retenue — Texte source unique.**
+**Cas nominaux**
 
----
+- Given: un instrument de référence 220 et un token à 466,16 Hz
+  When: on lance la lecture
+  Then: `playbackRate = clamp(466,16 / 220, 0,25, 4) = 2`, `semitoneOffset = 12`, le sample est joué 2× plus vite (durée divisée par 2)
+- Given: deux pistes, même instrument, même step, rates différents
+  When: la lecture démarre
+  Then: chaque piste joue sa propre vitesse (aucun rate partagé)
+- Given: une lecture en cours et une hauteur modifiée dans la grille
+  When: le cycle suivant démarre
+  Then: la nouvelle hauteur est prise en compte sans arrêter la lecture (le symbole nettoyé du `@fréq` reste reconnu)
 
-## Décisions actées
+**Cas limites**
 
-| # | Décision | Raison |
-|---|----------|--------|
-| 1 | Pas de flag "mélodique" | Tout instrument est pitchable, c'est l'utilisateur qui décide d'appliquer ou non une fréquence |
-| 2 | Notation `Hum@440` | `@` n'est pas utilisé dans la syntaxe actuelle, se lit "at" |
-| 3 | Fréquence brute (Hz) stockée dans le texte | Stockage simple, pas de mapping note→fréquence |
-| 4 | Molette = ±1 demi-ton | Musical, intuitif. `freq * 2^(±1/12)` |
-| 5 | Détection hauteur en V2 (autocorrélation) | Via un bouton "Détecter" dans le formulaire instrument |
-| 6 | Champ `referenceFrequency` dans `instruments` | Stocké en BDD, détecté une fois, modifiable manuellement |
-| 7 | `PatternStep` enrichi de `frequency?: number` | Extraite du texte par le parser |
-| 8 | `SequenceNotes` évolue vers `{ name, playbackRate }` | Le playbackRate est pré-calculé avant l'envoi à AudioEngine |
-| 9 | Pas de migration `patterns` | Les `@freq` sont dans les `sentences` existantes |
-| 10 | Migration `instruments` : `ALTER TABLE ADD reference_frequency REAL` | Seule migration BDD nécessaire |
-| 11 | Manifest library : version 1 → 2 | Ajout de `referenceFrequency` dans les instruments exportés |
-| 12 | `playbackRate` clampé à 0.25–4 | Évite les taux extrêmes (-2 à +2 octaves) |
-| 13 | Pas de time-stretch en V1 | Accepté : la durée du sample change avec le pitch |
-| 14 | `@` interdit dans les symboles d'instruments | Validation ajoutée pour éviter les ambiguïtés |
+- Given: une fréquence cible très éloignée de la référence
+  When: la lecture prépare le pattern
+  Then: le playbackRate est borné à `[0,25, 4]`, pas rejeté
+- Given: un instrument sans référence (`null` ou ≤ 0)
+  When: la lecture lit un token pitché
+  Then: `playbackRate = 1`, aucun décalage, aucune erreur
+- Given: deux pistes alignées sur le même temps avec le même instrument
+  When: la lecture tourne plusieurs cycles
+  Then: les pistes restent synchronisées (un Loop et un compteur de step par piste)
 
----
+**Cas d'erreur**
 
-## Flux de données
+- Given: `Ctrl+Enter` pressé deux fois rapidement
+  When: la seconde frappe arrive pendant le démarrage
+  Then: aucune seconde lecture n'est lancée, aucune erreur Tone.js
+
+#### Bibliothèque
+
+- Given: un instrument à référence 440
+  When: on exporte un `.beatpack`
+  Then: le manifest est en `version: 2` avec `referenceFrequency` par instrument
+- Given: un `.beatpack` v1 (sans `referenceFrequency`)
+  When: on l'importe
+  Then: les instruments sont importés avec `referenceFrequency = null`, sans erreur
+- Given: des patterns v1 dont les phrases n'ont pas de `@fréquence`
+  When: on les importe puis on les lit
+  Then: la lecture est inchangée (aucun playbackRate)
+
+## Dette connue
+
+| #    | Edge case / sujet                                                                                                                          | Repris par | Justification                                                                  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------ |
+| EC-1 | Scroll trackpad continu sur un badge : chaque cran vaut ±1 demi-ton                                                                        | V2         | Ajustement du pas au scroll continu repoussé                                   |
+| EC-2 | Deux fréquences distinctes d'un même demi-ton réutilisent le Player créé au premier usage, donc son rate exact                             | —          | Clé du pool = `semitoneOffset` ; seul le playbackRate de création est appliqué |
+| EC-3 | Pas de time-stretch : la durée du sample varie avec la hauteur                                                                             | —          | Exclu V1 (décision 13)                                                         |
+| EC-4 | Changer la fréquence de référence après création de patterns : les Hz stockés dans les phrases ne bougent pas, la hauteur de sortie change | —          | Comportement documenté, pas un bug                                             |
+| EC-5 | Parcours de bout en bout (enregistrer → détecter → pitcher → jouer) sans test automatisé                                                   | —          | Case « Intégration bout en bout » restée non cochée dans la version de travail |
+| EC-6 | Instrument sans fréquence de référence : non pitchable, molette inopérante                                                                 | —          | Comportement voulu (`SP-NOTE-02`)                                              |
+
+Couverts : parsing `@fréquence`, molette et reset, calcul du playbackRate, manifest v2 (tests listés en Traçabilité) ; cas limites détaillés dans `SP-NOTE-01` et `SP-NOTE-02`.
+
+## Arbre de flux
+
+**Flux de données**
 
 ```
 Création instrument
@@ -142,201 +176,54 @@ Lecture (Play)
               └── player.start(time)  (pas de setter)
 ```
 
----
+## Décisions & Justifications — ADR
 
-## Architecture cible
+| #   | Décision                                                                                          | Raison                                                                                                                       |
+| --- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Pas de flag « mélodique »                                                                         | Tout instrument est pitchable, c'est l'utilisateur qui décide d'appliquer ou non une fréquence                               |
+| 2   | Notation `Hum@440`                                                                                | `@` n'est pas utilisé dans la syntaxe actuelle, se lit « at »                                                                |
+| 3   | Fréquence brute (Hz) stockée dans le texte                                                        | Stockage simple, pas de mapping note → fréquence                                                                             |
+| 4   | Molette = ±1 demi-ton                                                                             | Musical, intuitif. `freq * 2^(±1/12)`                                                                                        |
+| 5   | Détection de hauteur en V2 (autocorrélation)                                                      | Via un bouton « Détecter » dans le formulaire instrument                                                                     |
+| 6   | Champ `referenceFrequency` dans `instruments`                                                     | Stocké en BDD, détecté une fois, modifiable manuellement                                                                     |
+| 7   | `PatternStep` enrichi de `frequency?: number`                                                     | Extraite du texte par le parser                                                                                              |
+| 8   | `SequenceNotes` évolue vers `{ name, playbackRate }`                                              | Le playbackRate est pré-calculé avant l'envoi à AudioEngine                                                                  |
+| 9   | Pas de migration `patterns`                                                                       | Les `@freq` vivent dans les `sentences` existantes                                                                           |
+| 10  | Migration `instruments` : `ALTER TABLE ADD reference_frequency REAL`                              | Seule migration BDD nécessaire (`003_reference_frequency.ts`)                                                                |
+| 11  | Manifest library : version 1 → 2                                                                  | Ajout de `referenceFrequency` dans les instruments exportés                                                                  |
+| 12  | `playbackRate` clampé à 0,25–4                                                                    | Évite les taux extrêmes (−2 à +2 octaves)                                                                                    |
+| 13  | Pas de time-stretch en V1                                                                         | Accepté : la durée du sample change avec le pitch                                                                            |
+| 14  | `@` interdit dans les symboles d'instruments                                                      | Validation ajoutée pour éviter les ambiguïtés                                                                                |
+| 15  | Le texte de la phrase est la **source unique de vérité** des fréquences (Option D)                | Un état dérivable du texte ne se stocke pas à côté : le miroir se désynchronise et le `@freq` nettoyé disparaît de la saisie |
+| 16  | `@A#4` (nom de note) accepté en plus de `@440` (Hz), rétrocompatible ; affichage toujours en note | Lisibilité : on ne lit pas `@440.16376` dans une grille                                                                      |
+| 17  | La molette et la saisie écrivent une note juste (snap au demi-ton le plus proche)                 | Pas de flottants dans le texte, la grille reste lisible                                                                      |
+| 18  | Double-clic sur un badge = reset de la hauteur                                                    | Retour au son naturel sans passer par la saisie                                                                              |
 
-### Modèle de données
+**Corrections d'implémentation.** La décision 5 annonce la détection en V2 : elle a été livrée dans cette feature (`detectPitch`, hook `useDetectPitch`, bouton « Détecter »). Le type de la décision 8 porte aussi `semitoneOffset`, qui sert de clé au pool de Players.
 
-```
-Instrument
-  + referenceFrequency: number | null   (Hz, détecté ou saisi)
+## Leçons de réalisation
 
-Pattern
-  (inchangé — les @freq sont dans sentences)
+- L'analyse #1 stockait les fréquences dans un tableau miroir `frequencies` plus une colonne BDD, et `changeSentence` nettoyait le `@440` du texte (le textarea perdait l'affichage) → direction Option D : les `@freq` vivent dans `sentences` → un état dérivable du texte ne se stocke pas à côté (ADR-15).
+- Crainte « deux pistes, même instrument, même step, playbackRate différents » → vérifié : chaque `player.start()` crée sa propre source audio → ne pas complexifier sur une crainte non vérifiée.
+- `@freq` cassait les consommateurs de symboles : `extractUniqueSymbols` enregistrait `Hum@440` (hot-reload cassé en lecture) et `areAllSymbolsValid` renvoyait `false` (aucune mise à jour de séquence en lecture) → `parseToken()` appliqué avant comparaison → tout consommateur de symbole nettoie via `parseToken` (`.agents/reference-utilitaires.md`).
+- Trois erreurs Tone.js « The time must be greater than or equal to the last scheduled time » : double `playTrack` (Ctrl+Enter), `updateSequences` + `start()` sur le même instrument, puis le setter `playbackRate` à chaque cycle → `playingRef` posé avant l'`await`, puis 1 `Tone.Loop` + 1 `Tone.Player` par piste et pool lazy (rate fixé à la création) → ne jamais modifier la timeline d'un Player en lecture.
+- Les pistes jouaient avec un temps de retard (compteur `stepIndex` partagé) → `localStep` en closure de chaque Loop → un compteur de pas ne se partage pas entre pistes.
+- La molette écrivait des fréquences flottantes (`@440.16376`) → passage à `@A#4`, snap au demi-ton, `noteNameToFrequency` / `frequencyToNoteName` → une hauteur s'écrit en note.
 
-PatternStep
-  + frequency?: number                  (extraite du token @freq)
-```
+## Vigilances
 
-### AudioEngine — pool lazy
+- `Tone.Player.playbackRate` est un setter qui réécrit la `StateTimeline` du Player (`cancel(stopEvent)` + `setStateAtTime`) : une assignation pendant la lecture annule les events futurs et lève « The time must be greater than or equal to the last scheduled time ». Le pool lazy fixe le rate une seule fois à la création, puis `start(time)` seulement.
+- Le pool est indexé par demi-ton (`semitoneOffset`), pas par fréquence : deux fréquences du même demi-ton partagent le Player du premier usage et donc son rate. Changer le calcul du rate sans changer la clé fausse la hauteur.
+- 1 `Tone.Loop` par piste avec son `localStep` : un compteur de step partagé entre pistes les décale d'un temps.
+- `playingRef` doit être posé avant le premier `await` de `playTrack` et remis à `false` dans `stopTrack` et en cas d'erreur : sinon un double Ctrl+Enter lance deux séquences.
+- Le tooltip de step est rendu dans `document.body` (`createPortal`, `position: fixed` calculée au `mouseenter`) : le replacer dans le badge lui ferait hériter du `transform` / `filter` de `step-active-pulse`.
 
-```
-createPlayers(audioBuffers)
-  → décode les buffers → this.decodedBuffers: Map<name, AudioBuffer>
+## Traçabilité
 
-createSequence(tracks)
-  → 1 Tone.Loop par piste (localStep par closure)
-  → pas de buildTrackPlayers (les Players sont créés lazily)
+- **Spec et US** : §2.1 (Instrument), §2.3 (Phrase), §6.1 (flux de composition), §13 (schémas SQL), §4.4 / §6.3 (`.beatpack`).
+- **Spec parallèle** : `SP-NOTE-01`, `SP-NOTE-02`, `SP-AUDIO-01` (AMENDE §6.1).
+- **Conventions établies** : `.agents/conventions.md` (Instruments, Audio, Sequence — index aplati, pitch, `@` interdit) · `.agents/architecture.md` (§13 amendé par `SP-NOTE-02`) · `.agents/domain-glossary.md` (Fréquence de référence, `.beatpack`) · `.agents/ui-rules.md` (5 couleurs de highlight dans `StepTooltip`).
+- **Utilitaires référencés** : `token-parser.ts`, `sentence-tokenizer.ts`, `pattern-parser.ts`, `pattern-validator.ts`, `detect-pitch.ts`, `note-name-to-frequency.ts`, `frequency-to-note.ts`, `update-token-frequency.ts` (détails et pièges dans `.agents/reference-utilitaires.md`).
+- **Tests** : `token-parser.test.ts`, `sentence-tokenizer.test.ts`, `pattern-parser.test.ts`, `update-token-frequency.test.ts`, `note-name-to-frequency.test.ts`, `detect-pitch.test.ts`, `sequence-service.test.ts`, `export-library-service.test.ts`, `import-library-service.test.ts`, `audio-engine.test.ts`.
 
-Loop callback:
-  → playNote(trackIndex, note, time)
-    → getPoolPlayer(trackIndex, name, semitoneOffset, playbackRate)
-      → existe déjà ? → retourne le Player
-      → nouveau ? → new Tone.Player(buffer).toDestination()
-                   → player.playbackRate = playbackRate (UNIQUEMENT à la création)
-                   → stocké dans playerPool[track][name].get(semitoneOffset)
-    → player.start(time)  ← pas de setter, pas de timeline modifiée
-
-updateSequences(tracks)
-  → swap this.trackNotes
-  → si nb pistes change → rebuildTrackLoops()
-  → le pool lazy crée de nouveaux Players au 1er usage
-```
-
-### Types
-
-```typescript
-// Sequence note enrichi
-type SequenceNote = { name: string | null; playbackRate: number; semitoneOffset?: number } | null;
-type SequenceNotes = SequenceNote | SequenceNote[];
-```
-
-### Nouveaux fichiers
-
-| Fichier | Rôle |
-|---------|------|
-| `src/renderer/utils/detect-pitch.ts` | Autocorrélation → fréquence (Hz) |
-| `src/renderer/utils/update-token-frequency.ts` | `updateTokenFrequency(sentence, flatIdx, freq): string` |
-| `src/renderer/utils/frequency-to-note.ts` | `frequencyToNoteName(freq): string` (A4=440) |
-| `src/renderer/utils/note-name-to-frequency.ts` | `noteNameToFrequency("A#4"): number` (reverse) |
-| `src/renderer/features/instruments/hooks/useDetectPitch.ts` | Hook partagé pour le bouton Détecter |
-| `src/renderer/features/pattern/components/StepTooltip.tsx` | Note strip + couleurs + mute + reset |
-
-### Fichiers modifiés
-
-| Fichier | Modification |
-|---------|-------------|
-| `src/shared/models/instrument-dto.ts` | Ajout `referenceFrequency: number \| null` |
-| `src/renderer/features/instruments/models/instrument-model.ts` | Ajout `referenceFrequency` |
-| `src/renderer/features/instruments/types/instrument-types.ts` | Hérite de Instrument |
-| `src/renderer/features/instruments/components/form/InstrumentForm.tsx` | Champ fréquence + bouton Détecter |
-| `src/renderer/features/instruments/utils/instrument-validator.ts` | Validation : `@` interdit dans symbole |
-| `src/main/db/repositories/instrument-repository.ts` | INSERT/UPDATE avec `referenceFrequency` |
-| `src/main/db/migrations/003_pitch.ts` | `ALTER TABLE instruments ADD COLUMN reference_frequency REAL` |
-| `src/main/db/database.ts` | Importer et appeler migration 003 |
-| `src/renderer/features/pattern/types/pattern-types.ts` | `PatternStep.frequency?: number` |
-| `src/renderer/features/pattern/utils/pattern-parser.ts` | `parseToken()`, `createStep`/`createGroup` → extraire `@freq` |
-| `src/renderer/features/instruments/engine/instrument-engine.ts` | `getInstrumentReferenceFrequency(symbol)` |
-| `src/renderer/features/sequence/types/sequence-note.ts` | `SequenceNote` → `{ name, playbackRate }` |
-| `src/renderer/features/sequence/adapters/sequence-adapter.ts` | Adapter enrichi |
-| `src/renderer/features/sequence/service/sequence-service.ts` | `preparePattern` → calculer `playbackRate` |
-| `src/renderer/features/audio/engine/audio-engine.ts` | `createSequence` → appliquer `playbackRate` |
-| `src/renderer/features/pattern/components/StepBadge.tsx` | `onWheel` handler + affichage note |
-| `src/renderer/features/pattern/components/StepCell.tsx` | Propager `onFrequencyChange` |
-| `src/renderer/features/pattern/components/Column.tsx` | Propager `onFrequencyChange` |
-| `src/renderer/features/pattern/components/PatternSteps.tsx` | Propager `onFrequencyChange` |
-| `src/renderer/features/pattern/hooks/usePatternSession.ts` | `handleFrequencyChange` → `updateTokenFrequency` → `changeSentence` |
-| `src/renderer/features/library/` (export/import) | Manifest v2, `referenceFrequency` |
-| `src/renderer/features/guide/` | Documentation feature |
-
----
-
-## Cas limites
-
-| Cas | Comportement |
-|-----|-------------|
-| Instrument sans `referenceFrequency` | Molette inopérante sur ses steps. `@freq` dans le texte ignoré (token traité comme symbole pur, sera invalide si `@` présent) |
-| `referenceFrequency` modifiée après création de patterns | Les fréquences stockées dans les phrases restent en Hz absolu. Si la référence change, le `playbackRate` est recalculé → la hauteur de sortie change. Documenté. |
-| Fréquence = `0` dans le texte (`Hum@0`) | `parseFloat("0")` → `0`. Ignoré (fréquence invalide). |
-| Silence `.` avec fréquence `.@440` | Ignoré : le silence reste silencieux. |
-| Groupe avec fréquences mélangées `(Hum@440 Hum@554)` | OK — chaque token interne a sa propre fréquence. |
-| `@` dans le symbole d'un instrument | Validateur refuse le symbole. |
-| Trackpad (scroll continu) sur le badge | Accepté en V1. Ajustement possible en V2. |
-| Export/import de `.beatpack` v1 | Les patterns v1 n'ont pas de `@freq` dans leurs phrases → import normal. |
-
----
-
-## Avancement
-
-- [x] Specs validées
-- [x] Analyse contradictoire (analyses #1 et #2)
-- [x] Décisions actées (14 décisions)
-- [x] Pitch detection (`detectPitch` + tests)
-- [x] DB migration (`reference_frequency` dans instruments)
-- [x] Instrument Engine : `getInstrumentReferenceFrequency`
-- [x] Instrument Form UI : champ fréquence + bouton Détecter
-- [x] Pattern parser : `parseToken()`, `createStep`/`createGroup` mis à jour
-- [x] `PatternStep.frequency` dans le type
-- [x] `SequenceNotes` type enrichi
-- [x] Sequence Service/Adapter : calcul du `playbackRate`
-- [x] AudioEngine : `playbackRate` dans `createSequence`
-- [x] `updateTokenFrequency` utilitaire + tests
-- [x] StepBadge : molette + affichage nom de note
-- [x] Propagation `onFrequencyChange` dans la chaîne de composants
-- [x] `usePatternSession` : intégration molette → `changeSentence`
-- [x] Library export/import : manifest v2
-- [x] Notation `@A#4` (nom de note) + `noteNameToFrequency`
-- [x] `StepTooltip` unifié (note strip + couleurs + mute + reset)
-- [x] Double-clic reset pitch
-- [x] `playingRef` guard contre double playTrack
-- [x] `StepTooltip` portal + MuteIcon + note strip conditionnel
-- [x] Suppression `ColorTooltip`
-- [x] Suppression clic mute sur badge
-- [x] 1 Tone.Loop par piste + `localStep` par Loop
-- [x] Pool lazy : Player créé UNE FOIS avec `playbackRate`, réutilisé par offset
-- [ ] Intégration bout en bout
-
-## Notes / décisions
-- Pitch shifting via `playbackRate` (simple, pas de time-stretch en V1)
-- Pas de flag "mélodique" — tout instrument est pitchable, c'est le choix utilisateur qui active ou non
-- Le texte est la source unique de vérité pour les fréquences (Option D)
-- `@` est le séparateur symbole/fréquence, interdit dans les symboles d'instruments
-- Molette = ±1 demi-ton. Affichage en nom de note (A4, C#3) dérivé de la fréquence
-- Tone.js v15 : `playbackRate` est un getter/setter `Positive` (number), pas un Signal → assignation `=` correcte
-- Notation : `@A#4` accepté (nom de note) en plus de `@440` (Hz), rétrocompatible. Affichage toujours en nom de note
-- Molette : snap automatique au demi-ton le plus proche (pas de floats dans le texte)
-- Reset pitch : double-clic sur le badge → supprime `@freq`
-
-## Améliorations UX (v2)
-
-### Notation texte `@A#4` au lieu de `@440.16376`
-- `parseToken` accepte les deux formats : `@440` (Hz) et `@A#4` (nom de note)
-- `updateTokenFrequency` écrit toujours le nom de note (via `frequencyToNoteName`)
-- La molette produit des notes justes (snap au demi-ton), pas des floats
-- Nouvel utilitaire : `noteNameToFrequency()`
-
-### Reset de la hauteur
-- Double-clic sur un badge → `onFrequencyChange(null)` → supprime le `@freq` du texte
-- Retour au son original (fréquence de référence de l'instrument)
-
-### Refonte du hover : `StepTooltip` unifié
-- Remplace `ColorTooltip` (supprimé) + `MuteIcon` séparés
-- **Note strip** : 17 notes (±8 autour de la note courante), clic pour sélectionner. Caché si l'instrument n'a pas de `referenceFrequency`
-- **Color picker** : 5 couleurs, toujours visibles (même sans `referenceFrequency`)
-- **Mute** : icône `MuteIcon` (SVG speaker barré), toujours visible. Le clic simple sur le badge ne mute plus — uniquement via le tooltip
-- **Reset** : bouton ⟳, visible si le token a une fréquence
-- **Portal React** : rendu dans `document.body` via `createPortal()` → isolation totale de l'animation `step-active-pulse` (pas de `transform: scale(1.08)` ni `filter: brightness(1.3)` hérités)
-- **Positionnement** : `position: fixed` calculé via `badgeRef.getBoundingClientRect()` au `mouseenter`
-- Tailles : `w-4 h-4` pastilles, `text-xs px-1.5` notes, `p-3` global
-- Scroll horizontal du note strip à la molette seule (pas de Shift)
-- Pastilles couleur → hex Tailwind-400 pour correspondre au texte du badge
-- 150ms de délai de fermeture inchangé
-
-## Bugs corrigés
-
-### #1 — `extractUniqueSymbols` n'enlevait pas le `@freq`
-**Impact** : `registerSymbol("Hum@440")` au lieu de `registerSymbol("Hum")`, ce qui cassait le hot-reload en cours de lecture.
-**Fix** : `sentence-tokenizer.ts:extractSymbols` applique `parseToken()` pour nettoyer le symbole avant de le pousser.
-
-### #2 — `areAllSymbolsValid` n'enlevait pas le `@freq`
-**Impact** : `allValid === false` quand `@freq` présent → `updateTrack` jamais déclenché en cours de lecture → l'ancienne séquence continuait (pas de changement de pitch en live).
-**Fix** : `pattern-validator.ts:areAllSymbolsValid` applique `parseToken()` avant de comparer le symbole.
-
-### #3 — Race condition double `playTrack`
-**Impact** : erreur Tone.js "The time must be greater than or equal to the last scheduled time" quand Ctrl+Enter pressé 2x rapidement.
-**Cause** : `setPlaying(true)` était après `await playPattern()`. Pendant l'attente, `playing === false` → un second `playTrack` lançait un `createSequence()` qui tentait `masterLoop.start(0)` alors que le Transport tournait déjà.
-**Fix** : `AudioContext.tsx` — `playingRef` immédiatement à `true` au début de `playTrack`, garde-fou `if (playingRef.current) return`. Reset à `false` dans `stopTrack` et en cas d'erreur.
-
-### #4 — Race condition `updateSequences` + `start()` même instrument
-**Impact** : erreur Tone.js "The time must be greater than or equal to the last scheduled time" quand 2 pistes utilisent le même instrument aligné sur le même temps.
-**Fix** : `audio-engine.ts` — refacto `Tone.Players` partagé → 1 `Tone.Loop` par piste + 1 `Tone.Player` par instrument/piste. Chaque piste a ses propres instances de Player et de Loop → pas de collision de timeline `_state`.
-
-### #5 — `playbackRate` setter crash à chaque cycle de piste
-**Impact** : erreur Tone.js "The time must be greater than or equal to the last scheduled time" réapparaît à chaque cycle de piste pendant la lecture. Le `player.playbackRate = rate` dans le Loop callback modifie la timeline `_state` du Player (`cancel(stopEvent) + setStateAtTime("stopped", newTime)`), ce qui nettoie les events futurs et corrompt la timeline pour les cycles suivants.
-**Stack trace** : `set playbackRate (Player.js:396)` → `StateTimeline.setStateAtTime` → `Timeline.add` → `assert(GTE)`.
-**Fix** : `audio-engine.ts` — pool lazy. `playerPool: Map<name, Map<semitoneOffset, Player>>[]`. Le Player est créé UNE FOIS avec son `playbackRate` définitif (pas de setter pendant la lecture). `player.start(time)` uniquement dans le Loop callback, pas de `playbackRate =` ni `stop()`.
-
-### #6 — Décalage temporel entre pistes (stepIndex partagé)
-**Impact** : les pistes étaient désynchronisées (la piste 2 jouait avec 1 temps de retard) quand `stepIndex` était partagé entre les Loops.
-**Fix** : `audio-engine.ts` — `localStep` par Loop (closure). Plus de `this.stepIndex` partagé.
+> Écarté à la compaction (texte complet : version de travail) : Problème (→ Résumé métier) · Solution cible (→ Résumé métier / ADR-15) · Flux de pensée & analyses contradictoires (→ ADR-15 / Leçons de réalisation) · Décisions actées (→ ADR-1 à 14) · Flux de données (→ Arbre de flux) · Cas limites (→ Dette connue / Scénarios) · Architecture cible (pilotage du développement ; Modèle de données → ADR-7, ADR-10 · AudioEngine — pool lazy → Arbre de flux / Vigilances · Types → ADR-8 · Nouveaux fichiers → Traçabilité · Fichiers modifiés → Traçabilité ; la migration réelle est `003_reference_frequency.ts`) · Avancement (pilotage du développement) · Notes / décisions (→ ADR-15 à 18) · Améliorations UX (v2) (→ Résumé métier / Scénarios : comportement livré) · Bugs corrigés (→ Leçons de réalisation / Vigilances)

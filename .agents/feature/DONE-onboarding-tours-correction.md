@@ -1,49 +1,56 @@
 # Feature: Correction des tours guidés (onboarding)
 
-## Specs
+> Clôturé le 2026-06-30 · version de travail : `git show 66eeb90:.agents/feature/DONE-onboarding-tours-correction.md`
 
-### ✅ P0 — Bugs bloquants (terminé)
+## Résumé métier
 
-- [x] **Studio tour : `onNextClick` bug** — refactoré avec `setSectionState()` qui lit l'état actuel avant de cliquer.
-- [x] **Fallback pour sélecteurs vides** — helpers deviennent des no-ops si le DOM n'est pas prêt.
-- [x] **Race condition `GuideContent.tsx`** — `localStorage` supprimé, `setTimeout(500)` remplacé par `waitForElement()`.
-- [x] **Race condition `OnboardingDriver.tsx`** — idem.
+Correction et consolidation des visites guidées driver.js : suppression des bugs bloquants du tour Studio (`onNextClick`, sélecteurs vides, courses entre `localStorage` et `setTimeout`), factorisation de la création des tours (`createTour()`), réduction du tour Studio de 16 à 9 étapes, réécriture des textes, suppression du tour Patterns et enrichissement du Guide (édition des steps, raccourcis, icônes Lucide).
 
-### ✅ P1 — Robustesse (terminé)
+## Scénarios évolution — nouveau comportement
 
-- [x] **DRY : factory `createTour()` partagée** — `onboarding/utils/createTour.ts`.
-- [ ] **Ajouter `data-tour` attributes** — non prioritaire, à faire au fil des corrections.
+> Reconstitués depuis la liste des corrections (fichier antérieur au gabarit).
 
-### ✅ P2 — Pédagogie et UX (terminé)
+1. Étant donné le tour Studio, quand je clique sur « Suivant », alors le tour avance d'une étape sans sauter d'étape (l'état courant est lu avant le clic).
+2. Étant donné un élément pas encore monté dans le DOM, quand le tour attend, alors `waitForElement()` attend son apparition au lieu d'un `setTimeout` fixe.
+3. Étant donné le Guide, quand j'ouvre la liste des tours, alors le tour Studio compte 9 étapes et le tour Patterns n'existe plus.
+4. Étant donné les raccourcis du Guide, quand je lis la section « Outils », alors le tooltip est documenté.
 
-- [x] **Studio : réduit de 16 à 9 étapes**
-- [x] **Réécriture des textes des popups (tous les tours)**
-- [x] **Option A : Suppression du tour Patterns**
-- [x] **Studio tour step 5 (Grille) — corriger le texte du mute (click → survol)**
-- [x] **GuideContent.tsx — ajouter section "Édition des steps"**
-- [x] **GuideShortcuts.tsx — compléter section "Outils" avec tooltip**
+## Dette connue
 
-### ✅ P3 — Interactivité du tour (terminé)
+| #    | Edge case / sujet                                              | Repris par                  | Justification                                  |
+| ---- | -------------------------------------------------------------- | --------------------------- | ---------------------------------------------- |
+| EC-1 | Attributs `data-tour` non ajoutés sur les éléments ciblés      | Au fil des corrections (P1) | Non prioritaire, sélecteurs actuels suffisants |
+| EC-2 | Tooltip forcé du tour (`data-tour-force-tooltip`) non supporté | —                           | Approche annulée (hors overlay driver.js)      |
 
-- [x] ~~**StepBadge.tsx — support `data-tour-force-tooltip`**~~ (annulé : le tooltip du tour est hors overlay driver.js)
-- [x] **Studio tour — étape overlay descriptive "Panneau d'édition"** (sans tooltip forcé)
-- [x] **Studio tour — émojis + `—` remplacés par `<span class="text-primary font-bold">`**
-- [x] **GuideContent.tsx / GuideShortcuts.tsx — émojis remplacés par icônes Lucide**
-- [x] **GuideShortcuts.tsx — revert des 3 entrées au pattern `<code>` existant** (uniformisation, suppression imports Lucide)
-- [x] **GuideContent.tsx — enrichir section "Syntaxe"** : silence `.`, groupes `()`, couleurs en exemple
-- [x] **GuideContent.tsx — icônes Lucide sur les boutons de tour** (`AudioLines`, `FileHeadphone`, `FileSliders`)
-- [x] **GuideContent.tsx — grille des tours `grid-cols-2` → `grid-cols-3` + animation `div-animated-wrapper` / `link-animated-inner`**
-- [x] **GuideContent.tsx — section "Édition des steps" : couleurs reformulées en exemple**
+Couverts : aucun test automatisé (frontend, hors TDD).
 
-## Avancement
+## Décisions & Justifications — ADR
 
-- [x] Specs validées
-GO
+| #   | Décision                                                 | Raison                                                         |
+| --- | -------------------------------------------------------- | -------------------------------------------------------------- |
+| 1   | Suppression du tour Patterns (Option A)                  | Moins de bruit pédagogique ; le tour Studio couvre l'essentiel |
+| 2   | `data-tour-force-tooltip` abandonné                      | Le tooltip du tour est hors de l'overlay driver.js             |
+| 3   | Couleurs de highlight citées en exemple, pas comme règle | Éviter de transformer une illustration en norme                |
+| 4   | Normalisation des pistes retirée de la documentation     | Information obsolète                                           |
+| 5   | `eslint-disable` conservé dans `GuideModalProvider.tsx`  | Toujours utile ; le retirer casserait le lint                  |
 
-## Notes / décisions
+## Leçons de réalisation
 
-- Option A validée pour le tour Patterns (suppression).
-- Approche `data-tour-force-tooltip` annulée.
-- Couleurs de highlight citées en exemple, pas comme règle.
-- Normalisation des pistes retirée de la doc (obsolète).
-- eslint-disable orphelin dans GuideModalProvider.tsx conservé (utile).
+- `onNextClick` sautait des étapes → lecture de l'état courant via `setSectionState()` avant le clic → pour un tour, toujours lire l'état réel avant de simuler une action.
+- Courses entre `localStorage` et `setTimeout(500)` → remplacement par `waitForElement()` → ne pas attendre un délai fixe pour un élément dont l'apparition est observable.
+- Duplication de la création des tours → factory `createTour()` dans `onboarding/utils/createTour.ts` → une seule fabrique pour tous les tours.
+
+## Vigilances
+
+- Les sélecteurs des tours doivent tolérer un DOM non prêt (`waitForElement`) : ne pas revenir à un `setTimeout` fixe.
+- Ne pas réintroduire le tour Patterns ni les émojis dans les popups : les textes et les icônes Lucide sont le rendu validé.
+
+## Traçabilité
+
+- **Spec et US** : aucune section de spec officielle ; parcours Guide / onboarding (feature hors spec).
+- **Spec parallèle** : aucun.
+- **Conventions établies** : `.agents/architecture.md` (`onboarding/`, `guide/`) · `.agents/conventions.md` (composants, hooks).
+- **Utilitaires référencés** : `createTour.ts` (factory des tours).
+- **Tests** : aucun (frontend).
+
+> Écarté à la compaction (texte complet : version de travail) : Specs (→ Résumé métier, Scénarios, ADR, Dette connue) · Avancement (pilotage du développement) · Notes / décisions (→ ADR, Dette connue)

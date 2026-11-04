@@ -147,16 +147,21 @@
 - **Type** : Engine (singleton)
 - **Méthodes** :
   - `getInstance(): AudioEngine`
-  - `setTempo(bpm: number): void` : BPM du Transport (`8n`).
+  - `setTempo(bpm: number): void` : BPM du Transport + recalcule `stepDuration` (`Tone.Time('8n').toSeconds()`).
   - `createPlayers(audioBuffers: AudioFileBuffer): Promise<void>` : décode et charge les buffers.
   - `addToPlayers(audioBuffers: AudioFileBuffer): Promise<void>` : ajoute des buffers sans reset.
-  - `createSequence(tracks: SequenceNotes[][]): void` : reconstruit les `Tone.Loop` par piste.
-  - `updateSequences(tracks: SequenceNotes[][]): void` : met à jour les notes ; reconstruit les loops si le nombre de pistes change.
+  - `createSequence(tracks: SequenceNotes[][]): void` : reconstruit les `Tone.Loop` par piste (une boucle par piste, si `onStep` est posé).
+  - `updateSequences(tracks: SequenceNotes[][]): void` : met à jour `trackNotes` ; reconstruit les boucles seulement si le nombre de pistes change.
   - `play(): Promise<void>` / `stop(): void`.
   - `playInstrument(name: string): Promise<void>` : pré-écoute d'un instrument.
   - `setStepCallback(cb: StepCallback): void` / `clearStepCallback(): void` : callback `(trackIndex, stepIndex)` pour l'UI.
   - `hasSymbol(symbol: string): boolean` / `registerSymbol(symbol: string): void`.
 - **Utilisé par** : `AudioContext` / `audio-facade`.
+- **Pièges** :
+  - `Tone.Player.playbackRate` est un setter qui réécrit la `StateTimeline` : jamais d'assignation pendant la lecture ; le rate est fixé à la création du Player.
+  - Le pool est indexé par `trackIndex`, instrument et `semitoneOffset` : deux fréquences du même demi-ton partagent le Player du premier usage.
+  - `localStep` est une closure par boucle : un compteur de pas partagé entre pistes les décale.
+  - `loadedSymbols` n'est pas purgé quand `createPlayers` reconstruit les `Tone.Players` : un symbole peut être cru chargé sans buffer.
 
 ---
 

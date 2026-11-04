@@ -16,16 +16,18 @@
 
 ## Index
 
-| ID          | Statut                         | Type    | Ancre officielle                     | Titre                                                            |
-| ----------- | ------------------------------ | ------- | ------------------------------------ | ---------------------------------------------------------------- |
-| SP-THEME-01 | en vigueur (validé 2026-11-04) | AMENDE  | §7 (Palette de couleurs et thème)    | Trois thèmes d'accent, défaut bleu et persistance locale         |
-| SP-NOTE-01  | en vigueur (validé 2026-11-04) | ETEND   | §2.3 (Phrase)                        | Notation `@fréquence` dans les tokens                            |
-| SP-NOTE-02  | en vigueur (validé 2026-11-04) | PRECISE | §2.1 (Instrument) et §6 (flux audio) | Lecture pitchée : `reference_frequency`, playbackRate et molette |
+| ID          | Statut                         | Type    | Ancre officielle                          | Titre                                                                             |
+| ----------- | ------------------------------ | ------- | ----------------------------------------- | --------------------------------------------------------------------------------- |
+| SP-THEME-01 | en vigueur (validé 2026-11-04) | AMENDE  | §7 (Palette de couleurs et thème)         | Trois thèmes d'accent, défaut bleu et persistance locale                          |
+| SP-NOTE-01  | en vigueur (validé 2026-11-04) | ETEND   | §2.3 (Phrase)                             | Notation `@fréquence` dans les tokens                                             |
+| SP-NOTE-02  | en vigueur (validé 2026-11-04) | PRECISE | §2.1 (Instrument) et §6 (flux audio)      | Lecture pitchée : `reference_frequency`, playbackRate et molette                  |
+| SP-AUDIO-01 | en vigueur (validé 2026-11-04) | AMENDE  | §6.1 (flux de composition Studio → Audio) | Lecture live : boucle par piste, mise à jour dynamique et subdivision des groupes |
 
 ## Domaines (codes)
 
 - `THEME` — apparence : thèmes de couleurs, accents, persistance.
 - `NOTE` — hauteur : notation `@fréquence`, lecture pitchée.
+- `AUDIO` — lecture : boucle par piste, édition live, subdivision des groupes.
 
 Liste fermée : extension sur validation utilisateur.
 
@@ -111,3 +113,29 @@ L'export `.beatpack` écrit un manifest `version: 2` avec `referenceFrequency` p
 - Un rate hors bornes est clampé, pas rejeté.
 - Un manifest v1 (sans `referenceFrequency`) importe des instruments à `null`.
 - La molette ne fait rien si l'instrument n'a pas de fréquence de référence : le step n'est pas pitchable.
+
+### SP-AUDIO-01 : Lecture live — boucle par piste, mise à jour dynamique et subdivision des groupes
+
+> **Statut** : en vigueur (validé 2026-11-04) · **Type** : AMENDE
+> **Ancre officielle** : §6.1 (flux de composition Studio → Audio)
+> **Source** : features `.agents/feature/DONE-dynamic-pattern.md` et `.agents/feature/DONE-gerer-notes.md`
+> **Mots-clés** : lecture live, boucle, Tone.Loop, updateTrack, updatePattern, subdivision, groupes, stepIndex, édition, playbackRate
+> **Gardé par** : `src/renderer/features/audio/tests/audio-engine.test.ts::createSequence`, `src/renderer/features/audio/tests/audio-engine.test.ts::updateSequences`, `src/renderer/features/audio/tests/audio-facade.test.ts::updatePattern`, `src/renderer/utils/sentence-tokenizer.test.ts`
+
+**Règle.** La lecture ne pré-programme plus les notes à l'avance : **un `Tone.Loop` par piste** (`'8n'`) lit `trackNotes[trackIndex]` à chaque tick, avec son `localStep` en closure (`step = localStep % trackLength`). Il n'y a plus de `Tone.Sequence` par piste ni de boucle maître unique. La boucle sert l'audio et l'animation (`onStep`) et n'est créée que si `onStep` est posé.
+
+L'édition live est autorisée pendant la lecture : ajout ou suppression de symboles, ajout ou suppression de phrases, mute. La poussée audio est conditionnée à `playing && areAllSymbolsValid(sentences)`. Un symbole inconnu, même dans un groupe, gèle la mise à jour audio, l'interface reste réactive, et les changements en attente s'appliquent dès le retour à un état valide. Un symbole entendu pour la première fois est chargé (IPC + décodage) avant d'être joué.
+
+`createSequence(tracks)` reconstruit les boucles (si `onStep` est posé) ; `updateSequences(tracks)` met à jour `trackNotes` et ne reconstruit les boucles que si le nombre de pistes change. Les groupes `(A B C)` sont subdivisés manuellement : la sous-note `i` démarre à `time + i * stepDuration / subCount`, avec `stepDuration = Tone.Time('8n').toSeconds()` recalculé par `setTempo()`.
+
+Le pool de Players est indexé par piste, instrument et `semitoneOffset` ; le `playbackRate` est fixé une seule fois à la création du Player, jamais pendant la lecture. `playingRef` est posé avant le premier `await` de `playTrack` (garde anti-double lecture).
+
+**Cas limites.**
+
+- Pattern vide (première phrase vidée) : `trackLength <= 0` → pas de lecture pour cette piste.
+- Symbole inconnu : audio gelé, interface réactive ; au retour à un état valide, tous les changements en attente s'appliquent.
+- `updateTrack` avant la fin de `playPattern` : `updateSequences` sort tôt (`trackLoops.length === 0`), la modification est perdue jusqu'à la prochaine édition valide.
+- Échec de `decodeAudioData` ou de résolution d'un symbole : erreur avalée, instrument muet, édition non bloquée.
+- Piste plus courte : chaque boucle boucle sur sa propre longueur (`step = localStep % trackLength`) ; la normalisation des phrases sur la première rend le cas théorique.
+- `loadedSymbols` n'est pas purgé quand `createPlayers` reconstruit les `Tone.Players` : un symbole peut être cru chargé sans buffer (dette connue).
+- Deux fréquences du même demi-ton partagent le Player du premier usage (clé de pool = `semitoneOffset`).

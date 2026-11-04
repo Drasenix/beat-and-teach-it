@@ -1,85 +1,67 @@
 # Feature: recorder
 
-## Specs
+> Clôturé le 2026-06-16 · version de travail : `git show 66eeb90:.agents/feature/DONE-recorder.md`
 
-Nouvel écran permettant d'enregistrer un instrument directement depuis l'application via le microphone.
+## Résumé métier
 
-### Contexte
-- Route : `/recorder`
-- Icône nav : `⏺` (U+23FA), titre "Enregistreur"
-- Position dans la sidebar : 3e (après Instruments, avant Patterns)
-- Navigation : Header.tsx + Home.tsx
+Écran `/recorder` pour enregistrer un instrument directement au microphone, éditer la forme d'onde (trim début/fin), pré-écouter et sauvegarder en WAV via le dialogue natif. La création de l'instrument reste dans l'écran Instruments : le recorder produit un fichier, il n'ajoute pas l'instrument au catalogue.
 
-### Stack technique
-- Capture : `getUserMedia` → `AudioContext` → `MediaStreamSource` → `ScriptProcessorNode`
-- Format : WAV (PCM 16-bit mono), encodé côté rendu sans dépendance
-- Sauvegarde : dialogue natif `open-audio-save-dialog` → l'utilisateur choisit emplacement + nom → IPC `save-recorded-audio` → main écrit au chemin choisi
-- Création instrument : **non gérée par le recorder** — l'utilisateur passe par l'écran Instruments
-  (`/configuration/instruments`) via le formulaire existant + `open-file-dialog` (filtre déjà `.wav`)
+## Scénarios évolution — nouveau comportement
 
-### Flux utilisateur
-1. Page `/recorder` → état `idle` → bouton "⏺ Enregistrer"
-2. Clic → demande permission micro → état `recording` (cercle rouge + timer)
-3. Clic "⏹ Arrêter" → arrêt micro → état `recorded`
-4. **Waveform editor** apparaît : rendu canvas du signal audio avec deux curseurs de trim
-5. L'utilisateur déplace les curseurs début/fin pour sélectionner la zone à conserver
-6. Clic "Rogner" → génère un nouveau `Float32Array` avec la portion sélectionnée → pré-écoute
-7. Clic "Sauvegarder" → dialogue natif `open-audio-save-dialog` (choix emplacement + nom) → IPC `save-recorded-audio` → état `saved`
-8. Clic "🗑 Effacer" ou "⏺ Nouvel enregistrement" pour recommencer
-9. L'utilisateur va dans Instruments → "Ajouter un instrument" → sélectionne le fichier `.wav`
-   sauvegardé via le dialogue natif
+> Reconstitués depuis le flux utilisateur (fichier antérieur au gabarit).
 
-### Waveform editor
-- **Rendu** : `<canvas>` remplissant la largeur du conteneur, hauteur fixe (ex: 160px)
-- **Signal** : downsampling du `Float32Array` pour affichage (1 pixel = N samples), trait blanc sur fond field
-- **Curseurs** : deux poignées verticales draggable (début = position 0, fin = position 100%)
-- **Zone sélectionnée** : fond semi-transparent primary entre les deux curseurs
-- **Bouton "Rogner"** : slice le `Float32Array` entre les indices début/fin, recrée un waveform affiché
-- **Pré-écoute** : `<audio>` caché comme moteur, contrôles customs stylés (play/pause + barre progression + temps)
-- **Playhead** : ligne verticale mobile sur le canvas qui suit `currentTime / duration` du `<audio>` en temps réel, visuelle uniquement (pas de seek au clic)
-- **Lissage** : boucle `requestAnimationFrame` (60 FPS) plutôt que `timeupdate` natif (4-20 Hz) pour un mouvement fluide
-- Pas d'auto-détection des silences, pas de découpe milieu, pas de zoom
+1. Étant donné l'écran `/recorder` à l'état `idle`, quand je clique « Enregistrer » et j'accorde le micro, alors l'état passe à `recording` (cercle rouge + timer).
+2. Étant donné un enregistrement terminé, quand je déplace les curseurs de trim puis clique « Rogner », alors la waveform et la pré-écoute reflètent la portion conservée.
+3. Étant donné un enregistrement rogné, quand je clique « Sauvegarder », alors le dialogue natif s'ouvre et le WAV est écrit au chemin choisi ; l'état passe à `saved`.
+4. Étant donné le fichier WAV sauvegardé, quand je vais dans Instruments → « Ajouter un instrument », alors je peux le sélectionner ; le recorder ne crée pas l'instrument lui-même.
 
-### UI
-- Layout : `content-page` + `workspace-section-content` (conforme au style existant)
-- Boutons : `btn-primary`, `btn-secondary`
-- Animation : pulse rouge custom `@keyframes record-pulse`
+## Dette connue
 
-### Fichiers à créer
-- `src/renderer/features/recorder/models/recorder-model.ts`
-- `src/renderer/features/recorder/services/recorder-service.ts`
-- `src/renderer/features/recorder/utils/wav-encoder.ts`
-- `src/renderer/features/recorder/utils/waveform-renderer.ts` — rendu canvas du waveform
-- `src/renderer/features/recorder/hooks/useRecorder.ts`
-- `src/renderer/features/recorder/hooks/useWaveformEditor.ts` — logique trim + curseurs
-- `src/renderer/features/recorder/components/RecorderScreen.tsx`
-- `src/renderer/features/recorder/components/WaveformEditor.tsx` — composant canvas + curseurs
+| #    | Edge case / sujet                                                       | Repris par        | Justification                          |
+| ---- | ----------------------------------------------------------------------- | ----------------- | -------------------------------------- |
+| EC-1 | `ScriptProcessorNode` est déprécié                                      | V2                | Remplaçable par `AudioWorklet`         |
+| EC-2 | Pas d'auto-détection des silences, pas de découpe multiple, pas de zoom | —                 | Hors V1, trim manuel assumé            |
+| EC-3 | Playhead visuelle sans seek                                             | —                 | Hors V1                                |
+| EC-4 | Création d'instrument non gérée par le recorder                         | Écran Instruments | Le formulaire existant fait le travail |
+| EC-5 | Tests limités à `wav-encoder` ; waveform et recorder non couverts       | —                 | Frontend, hors TDD                     |
 
-### Fichiers à modifier
-- `src/main/preload.ts` : ajout channels `save-recorded-audio` + `open-audio-save-dialog`
-- `src/main/icpEvents.ts` : handler `save-recorded-audio` + `open-audio-save-dialog`
-- `src/renderer/features/recorder/services/recorder-service.ts` : appelle `open-audio-save-dialog` avant `save-recorded-audio`
-- `src/renderer/App.tsx` : route `/recorder`
-- `src/renderer/components/Header.tsx` : nav item position 3
-- `src/renderer/components/Home.tsx` : lien home
+Couverts : `wav-encoder.test.ts` (encodage WAV).
 
-## Avancement
-- [ ] Specs validées
-- [x] Tests wav-encoder
-- [x] waveform-renderer.ts (downsample + renderWaveform + trimSamples)
-- [x] useWaveformEditor hook (canvas ref + drag trim)
-- [x] RecorderScreen + states (idle/recording/recorded/saving/saved)
-- [x] WaveformEditor component (canvas + curseurs + Rogner)
-- [x] IPC save-recorded-audio (déjà existant)
-- [x] Navigation et route (déjà existant)
+## Arbre de flux
 
-## Notes / décisions
-- Encodage WAV plutôt que MP3 (pas de dépendance lamejs)
-- ScriptProcessorNode (déprécié mais fonctionnel) plutôt qu'AudioWorklet (trop complexe pour ce besoin)
-- Trim manuel uniquement (pas d'auto-détection des silences) — l'utilisateur règle visuellement
-- Pas de découpe multiple, pas de zoom — basique et efficace
-- Sauvegarde via dialogue natif (emplacement + nom libre) plutôt que chemin automatique
-- Playhead visuelle uniquement (pas de seek) — line couleur primary plus lumineuse
-- RAF loop pour playhead fluide (60 FPS) plutôt que `timeupdate` natif (4-20 Hz)
-- Contrôles audio customs (play/pause, barre progression, temps) stylés avec les tokens du thème (primary, field, border, text-secondary) au lieu des contrôles natifs
+```
+/recorder
+  ├─ idle → « Enregistrer » → recording (pulse + timer)
+  ├─ recording → « Arrêter » → recorded (waveform + trim)
+  ├─ recorded → « Rogner » → pré-écoute (playhead)
+  ├─ recorded → « Sauvegarder » → dialogue natif → IPC → saved
+  └─ saved → « Effacer » / « Nouvel enregistrement » → idle
+```
 
+## Décisions & Justifications — ADR
+
+| #   | Décision                                                                      | Raison                                                                                        |
+| --- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| 1   | WAV PCM 16 bits mono, encodé sans dépendance                                  | Pas de dépendance MP3 (lamejs) ; format lisible par le formulaire instrument                  |
+| 2   | `getUserMedia` → `AudioContext` → `MediaStreamSource` → `ScriptProcessorNode` | `AudioWorklet` trop complexe pour le besoin ; `ScriptProcessorNode` déprécié mais fonctionnel |
+| 3   | Trim manuel uniquement (curseurs début/fin)                                   | Pas d'auto-détection des silences ; l'utilisateur règle visuellement                          |
+| 4   | Sauvegarde via `open-audio-save-dialog` puis IPC `save-recorded-audio`        | Emplacement et nom libres, pattern IPC existant                                               |
+| 5   | Playhead visuelle sans seek, boucle `requestAnimationFrame` (60 FPS)          | Mouvement fluide ; `timeupdate` natif trop lent ; pas de seek demandé                         |
+| 6   | Contrôles audio custom avec les tokens du thème                               | Cohérence UI ; les contrôles natifs ne suivent pas le thème                                   |
+| 7   | Le recorder ne crée pas d'instrument                                          | L'utilisateur passe par le formulaire Instruments (`open-file-dialog`, filtre `.wav`)         |
+
+## Vigilances
+
+- `ScriptProcessorNode` est déprécié : ne pas le remplacer par `AudioWorklet` sans re-tester l'encodage WAV et le trim.
+- Le recorder ne crée pas d'instrument : ne pas ajouter une création implicite dans l'écran d'enregistrement ; le parcours reste Recorder → Instruments.
+- Les canaux `save-recorded-audio` et `open-audio-save-dialog` sont déjà dans `preload.ts` : ne pas les dupliquer.
+
+## Traçabilité
+
+- **Spec et US** : aucune section de spec officielle ; parcours `/recorder` (feature hors spec).
+- **Spec parallèle** : aucun.
+- **Conventions établies** : `.agents/architecture.md` (18 IPC, `recorder/`) · `.agents/conventions.md` (Recorder) · `.agents/reference-utilitaires.md` (`wav-encoder.ts`, `waveform-renderer.ts`).
+- **Utilitaires référencés** : `wav-encoder.ts`, `waveform-renderer.ts`, `useRecorder`, `useWaveformEditor`.
+- **Tests** : `wav-encoder.test.ts`.
+
+> Écarté à la compaction (texte complet : version de travail) : Specs (→ Résumé métier, Scénarios, ADR, Dette connue) · Avancement (pilotage du développement) · Notes / décisions (→ ADR, Dette connue)

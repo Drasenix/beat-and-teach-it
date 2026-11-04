@@ -47,7 +47,7 @@ Read(file_path=".agents/specs/spec.txt", offset=<ligne>, limit=<N>)
 | Fréquence de référence         | §2.1, §13 + `SP-NOTE-02`                      |
 | Import / export `.beatpack`    | §4.4, §6.3, §3 (RG11, RG12) + `SP-NOTE-02`    |
 | BPM                            | §3 (RG13), §5                                 |
-| Audio / séquenceur             | §6.1, §6.4                                    |
+| Audio / séquenceur             | §6.1, §6.4 + `SP-AUDIO-01`                    |
 
 ## Quick lookup : spec parallèle (`SP-*`)
 
@@ -56,6 +56,7 @@ Read(file_path=".agents/specs/spec.txt", offset=<ligne>, limit=<N>)
 | Thèmes              | `SP-THEME-01` |
 | Notation de hauteur | `SP-NOTE-01`  |
 | Lecture pitchée     | `SP-NOTE-02`  |
+| Audio live          | `SP-AUDIO-01` |
 
 ## Workflow conseillé pour agent IA
 

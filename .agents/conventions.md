@@ -62,11 +62,14 @@
 ### Audio
 
 - `AudioEngine` (singleton) encapsule Tone.js.
-- `createSequence(tracks)` = un `Tone.Sequence` par piste, subdivision `'8n'`.
-- Groupes `(…)` → `SequenceNote[]` (tableau) — Tone.js dispatche chaque élément à la même position temporelle.
-- Step callback = `Tone.Loop` à `'8n'` → `activeStep` pour l'UI.
-- BPM clampé 1-300 (UI slider 40-240).
+- Un `Tone.Loop` par piste (`trackLoops`) à `'8n'` ; chaque boucle a son `localStep` en closure et lit `this.trackNotes[trackIndex]` à chaque tick. Plus de `Tone.Sequence` pré-programmé.
+- `createSequence(tracks)` reconstruit les boucles (si `onStep` est posé) ; `updateSequences(tracks)` met à jour `trackNotes` et ne reconstruit les boucles que si le nombre de pistes change.
+- Groupes `(…)` → `SequenceNote[]` ; la sous-note `i` démarre à `time + i * stepDuration / subCount`, avec `stepDuration = Tone.Time('8n').toSeconds()` recalculé par `setTempo()`.
+- Édition live : `updateTrack` / `updatePattern` ne poussent que si `playing && allValid` ; un symbole inconnu gèle l'audio, l'UI reste réactive, les changements en attente s'appliquent au retour à un état valide.
 - Pitch : `SequenceNote` porte `playbackRate` et `semitoneOffset` ; `playbackRate = cible / reference_frequency`, clampé `[0.25, 4]`, et la référence absente ou ≤ 0 donne `1`. Pas de time-stretch en V1.
+- Pool de Players : `playerPool[trackIndex][instrument][semitoneOffset]` ; le `playbackRate` est fixé **une seule fois à la création** du Player, jamais pendant la lecture (le setter réécrit la `StateTimeline` et lève « The time must be greater than or equal to the last scheduled time »).
+- `playingRef` est posé avant le premier `await` de `playTrack`, remis à `false` dans `stopTrack` et en cas d'erreur (garde anti-double lecture).
+- BPM clampé 1-300 (UI slider 40-240).
 
 ### Sequence
 
