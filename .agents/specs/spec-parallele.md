@@ -4,13 +4,11 @@
 >
 > **Primauté** : une entrée `SP-*` **en vigueur** prime sur la page officielle correspondante.
 >
-> **Périmètre** : règles de **comportement / flux / calculs**. Définitions d'entités → `.agents/domain-glossary.md`. Méthodes de code → `.agents/reference-utilitaires.md`.
->
-> **Écriture** : **Build uniquement**, après validation explicite de l'utilisateur, à la **recette nuances de l'étape 6**, ou à la **clôture d'un chantier PO** (`/cloturer-chantier`, skill `cadrage-po`). Le raffineur et `@review` détectent et proposent, ils n'écrivent jamais.
+> **Écriture** : dans le workflow, **Build uniquement**, après validation explicite de l'utilisateur, à la **recette nuances de l'étape 6**, ou à la **clôture d'un chantier PO** (`/cloturer-chantier`, skill `cadrage-po`). Le raffineur et `@review` détectent et proposent, ils n'écrivent jamais. Hors du workflow : dans le commit du changement, selon `.agents/specs/ecrire-une-regle.md`.
 >
 > **Lecture** : jamais le fichier entier. Index puis entrées ciblées (grep).
 >
-> **Cycle de vie** : une règle qui change = nouvelle entrée + ancienne marquée caduque. Jamais de réécriture de l'histoire. Une règle modifiée en partie reste en vigueur et reçoit `Amendé par : <nouvelle> (date) — <ce qui change>` (vérifié par le contrôle d'intégrité).
+> **Écrire une entrée** (quand, ce qui n'y va pas, remplacer ou amender, modèle) : `.agents/specs/ecrire-une-regle.md`, copie tenue par le kit.
 >
 > Dernière mise à jour : 2026-11-13
 
