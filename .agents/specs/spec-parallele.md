@@ -12,7 +12,7 @@
 >
 > **Cycle de vie** : une règle qui change = nouvelle entrée + ancienne marquée caduque. Jamais de réécriture de l'histoire.
 >
-> Dernière mise à jour : 2026-11-04
+> Dernière mise à jour : 2026-11-13
 
 ## Index
 
@@ -35,6 +35,7 @@ Liste fermée : extension sur validation utilisateur.
 
 - **Statuts** : `en vigueur (validé YYYY-MM-DD)` · `hypothèse (retenue provisoire, en attente de confirmation)` · `caduc (→ SP-…)`
 - **Types** : `AMENDE` (remplace la page) · `PRECISE` (complète une règle) · `ETEND` (cas non couvert)
+- **Gardé par** (convention du projet) : `tests` — les tests qui gardent la règle (`<Test>::<methode>`) ; en attente : `à compléter à l'étape 6 du lot qui l'implémente`. Le fichier de feature d'une règle est cité dans `Source`.
 
 ## Contrôle d'intégrité
 
